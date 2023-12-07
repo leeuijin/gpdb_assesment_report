@@ -1,10 +1,18 @@
 #!/bin/bash
 #mkdir -p /home/gpadmin/diag/diaglog
+source /usr/local/greenplum-db/greenplum_path.sh
 export LOGFILE=/home/gpadmin/diag/diaglog/diag_os.$(date '+%Y%m%d_%H%M')
 export HOSTFILE=/home/gpadmin/diag/hostfile_all
-source /usr/local/greenplum-db/greenplum_path.sh
+export HOSTFILEMDW=/home/gpadmin/diag/hostfile_master
+export HOSTFILESEG=/home/gpadmin/diag/hostfile_seg
 
 OSVER=`cat /etc/redhat-release | awk '{print $4}' | awk -F'.' '{print $1'}`
+
+MDWNM=`head -n 1 /home/gpadmin/diag/hostfile_master`
+SEGNM=`head -n 1 /home/gpadmin/diag/hostfile_seg`
+
+gpssh -h $MDWNM df -h | grep mapper | awk '{print $2}' > /home/gpadmin/diag/mdw_mapper.list
+gpssh -h $SEGNM df -h | grep mapper | awk '{print $2}' > /home/gpadmin/diag/seg_mapper.list
 
 echo "" > ${LOGFILE}
 echo "####################" >> ${LOGFILE}
@@ -107,7 +115,13 @@ echo "####################" >> ${LOGFILE}
 ### pre-check the /data filesystem device by df -h command
 gpssh -f ${HOSTFILE} 'sudo /sbin/blockdev --getra /dev/sd*' >> ${LOGFILE}
 echo "" >> ${LOGFILE}
-gpssh -f ${HOSTFILE} 'sudo /sbin/blockdev --getra /dev/mapper/*' >> ${LOGFILE}
+#gpssh -f ${HOSTFILE} 'sudo /sbin/blockdev --getra /dev/mapper/vg*' >> ${LOGFILE}
+while read MDWMAPPER; do
+  gpssh -f ${HOSTFILEMDW} sudo /sbin/blockdev --getra ${MDWMAPPER} >> ${LOGFILE}
+done < /home/gpadmin/diag/mdw_mapper.list
+while read SEGMAPPER; do
+  gpssh -f ${HOSTFILESEG} sudo /sbin/blockdev --getra ${SEGMAPPER} >> ${LOGFILE}
+done < /home/gpadmin/diag/seg_mapper.list
 
 echo "" >> ${LOGFILE}
 echo "####################" >> ${LOGFILE}
@@ -133,9 +147,9 @@ echo "### 13. NTP" >> ${LOGFILE}
 echo "####################" >> ${LOGFILE}
 if [ ${OSVER} -eq 8 ]
 then
-  gpssh -f ${HOSTFILE} ' systemctl status chronyd' >> ${LOGFILE}
+  gpssh -f ${HOSTFILE} 'systemctl status chronyd' >> ${LOGFILE}
 else
-  gpssh -f ${HOSTFILE} ' systemctl status ntpd' >> ${LOGFILE}
+  gpssh -f ${HOSTFILE} 'systemctl status ntpd' >> ${LOGFILE}
 fi
 echo "" >> ${LOGFILE}
-gpssh -f ${HOSTFILE} 'sudo date' >> ${LOGFILE}
+gpssh -f ${HOSTFILE} 'date' >> ${LOGFILE}
